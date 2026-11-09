@@ -171,10 +171,10 @@ async def on_start_details(callback: CallbackQuery):
     await delete_prev_messages(callback.from_user.id)
     media = [
         InputMediaPhoto(media=FSInputFile(PHOTO_MESTO1)),
-        InputMediaPhoto(media=FSInputFile(PHOTO_MESTO2), caption=TEXT_MESTO)
+        # К тексту второй фотки сразу прикрепляем кнопки
+        InputMediaPhoto(media=FSInputFile(PHOTO_MESTO2), caption=TEXT_MESTO, reply_markup=details_kb())
     ]
     await callback.message.answer_media_group(media=media)
-    await send_bot_message(callback.from_user.id, "Ты со мной?", reply_markup=details_kb())
     await callback.answer()
 
 # --- ВЕТКА "ГАЗ" ---

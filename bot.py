@@ -32,8 +32,10 @@ TEXT_MESTO = (
     "Я не мог быть постоянно рядом. Но я никого не забыл. И вот мне исполняется 25 лет. Для меня - это подводящая круглая дата."
 )
 
+# 🔥 НОВЫЙ ФИНАЛЬНЫЙ ТЕКСТ
 TEXT_FINAL_INFO = (
     "📅 Когда: 21.11.2026 (суббота)\n"
+    "🏠 Беседка: Русская изба.\n"
     "📍 Где: Чайковичи, СО Рассвет 428\n"
     "🕐 Время встречи: 13:00"
 )
@@ -157,15 +159,12 @@ async def cmd_start(message: Message):
     user_steps[message.from_user.id] = None
     user_info[message.from_user.id] = {}
     
-    # Удаляем всё, что бот присылал до этого
     await delete_prev_messages(message.from_user.id)
     
-    # Присылаем афишу
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await message.answer_photo(photo=photo)
     bot_messages[message.from_user.id].append(msg_photo)
     
-    # Присылаем текст с кнопкой
     await send_bot_message(
         message.from_user.id, 
         TEXT_LYRICS, 
@@ -298,7 +297,7 @@ async def handle_text(message: Message):
         msg_photo = await message.answer_photo(photo=photo)
         bot_messages[user_id].append(msg_photo)
         
-        # 3. Присылаем текст с датой/местом/временем
+        # 3. Присылаем НОВЫЙ текст с датой/местом/временем
         await send_bot_message(user_id, TEXT_FINAL_INFO)
         
         # 4. Присылаем финальное сообщение с кнопкой
@@ -385,17 +384,14 @@ async def on_restart(callback: CallbackQuery):
     user_steps[user_id] = None
     user_info[user_id] = {}
     
-    # Стираем абсолютно всё
     await delete_prev_messages(user_id) 
     
-    # Присылаем афишу
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await callback.message.answer_photo(photo=photo)
     if user_id not in bot_messages:
         bot_messages[user_id] = []
     bot_messages[user_id].append(msg_photo)
     
-    # Присылаем текст с кнопкой
     await send_bot_message(user_id, TEXT_LYRICS, reply_markup=start_kb(), parse_mode="Markdown")
     await callback.answer()
 

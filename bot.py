@@ -1,9 +1,13 @@
 import asyncio
+import csv
+import os
 from datetime import datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, InputMediaPhoto
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 # ====== НАСТРОЙКИ ======
 BOT_TOKEN = "9273998414:AAGRQnIAlP-UDzihzm8Pq0ObB5eohOumcTs"
@@ -44,7 +48,6 @@ TEXT_FINAL_INFO = (
 
 TEXT_DECLINE = "Очень жаль! Я не забыл нашу дружбу! Всё же буду рад тебя видеть! 🥺"
 
-# 🔥 ФИНАЛЬНЫЙ ТЕКСТ (ТОЧНО КАК В МАКЕТЕ)
 TEXT_FINAL_BONUS = (
     "На День Рождение жду с хорошим настроением!\n"
     "Но если будет плохое, не беда, исправим! \n"
@@ -62,6 +65,11 @@ TEXT_FINAL_BONUS = (
 )
 
 TEXT_REMINDER = "Привет! Напоминаю, что послезавтра, 21 ноября, мой День Рождения! 🥳\n📍 Место: Чайковичи, СО Рассвет 428 (Беседка: Русская изба)\n🕐 Встречаемся в 13:00\n\nЖду тебя, ничего не забудь! 🎉"
+
+# ====== СОСТОЯНИЯ ДЛЯ АДМИНА ======
+class AdminStates(StatesGroup):
+    wait_broadcast_pic = State()
+    wait_broadcast_text = State()
 
 # ================================================
 
@@ -158,7 +166,7 @@ async def reminder_loop():
             reminder_sent = True
             photo = FSInputFile(PHOTO_PATH)
             for user_id, info in user_info.items():
-                if info.get("preferences"):
+                if info.get("preferences") and info.get("preferences") != "Отказ":
                     try:
                         await bot.send_photo(chat_id=user_id, photo=photo, caption=TEXT_REMINDER)
                         await asyncio.sleep(0.1)
@@ -166,7 +174,7 @@ async def reminder_loop():
                         pass
         await asyncio.sleep(60)
 
-# --- ХЕНДЛЕРЫ ---
+# --- ХЕНДЛЕРЫ ДЛЯ ГОСТЕЙ ---
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -190,22 +198,18 @@ async def cmd_start(message: Message):
 @dp.callback_query(F.data == "start_details")
 async def on_start_details(callback: CallbackQuery):
     await delete_prev_messages(callback.from_user.id)
-    
     media = [
         InputMediaPhoto(media=FSInputFile(PHOTO_MESTO1)),
         InputMediaPhoto(media=FSInputFile(PHOTO_MESTO2))
     ]
     msg_album = await callback.message.answer_media_group(media=media)
-    
     if callback.from_user.id not in bot_messages:
         bot_messages[callback.from_user.id] = []
     for m in msg_album:
         bot_messages[callback.from_user.id].append(m)
-
     await send_bot_message(callback.from_user.id, TEXT_MESTO, reply_markup=details_kb())
     await callback.answer()
 
-# --- ВЕТКА "ГАЗ" ---
 @dp.callback_query(F.data == "yes_come")
 async def on_yes_come(callback: CallbackQuery):
     await delete_prev_messages(callback.from_user.id)
@@ -229,7 +233,6 @@ async def on_alone_no(callback: CallbackQuery):
     await send_bot_message(callback.from_user.id, "Супер! Напиши, пожалуйста, свое ФИО (полностью):")
     await callback.answer()
 
-# --- ВЕТКА "ДУМАЮ" ---
 @dp.callback_query(F.data == "think_come")
 async def on_think_come(callback: CallbackQuery):
     await delete_prev_messages(callback.from_user.id) 
@@ -237,17 +240,16 @@ async def on_think_come(callback: CallbackQuery):
     await send_bot_message(callback.from_user.id, "Напиши, пожалуйста, свое ФИО:")
     await callback.answer()
 
-# --- ВЕТКА "НЕ ПРИДУ" ---
 @dp.callback_query(F.data == "no_come")
 async def on_no_come(callback: CallbackQuery):
     await delete_prev_messages(callback.from_user.id) 
     await send_bot_message(callback.from_user.id, TEXT_DECLINE, reply_markup=restart_kb())
     await callback.answer()
     user = callback.from_user
+    user_info[user.id] = {"fio": user.full_name, "status": "Не придёт", "preferences": "Отказ"}
     await bot.send_message(ADMIN_ID, f"❌ *{user.full_name}* (@{user.username or '—'}) не придёт.", parse_mode="Markdown")
 
-# --- ОБРАБОТКА ТЕКСТА ---
-@dp.message(F.text & ~F.text.startswith("/"))
+@dp.message(F.text & ~F.text.startswith("/") & ~F.text.startswith("ADMIN:"))
 async def handle_text(message: Message):
     user_id = message.from_user.id
     step = user_steps.get(user_id)
@@ -267,9 +269,9 @@ async def handle_text(message: Message):
     elif step == "wait_date_think":
         user_info[user_id]["think_date"] = message.text
         user_steps[user_id] = None
+        user_info[user_id]["preferences"] = "Думает"
         await delete_prev_messages(user_id)
         await send_bot_message(user_id, "Скорее возвращайся с обратной связью! 👋", reply_markup=restart_kb())
-        
         info = user_info[user_id]
         await bot.send_message(ADMIN_ID, f"🤔 *{info['fio']}* думает и даст ответ *{info['think_date']}*", parse_mode="Markdown")
 
@@ -303,22 +305,15 @@ async def handle_text(message: Message):
     
     elif step == "preferences":
         user_info[user_id]["preferences"] = message.text
-        
-        # 1. Удаляем всё
         await delete_prev_messages(user_id)
         
-        # 2. Присылаем заново афишу
         photo = FSInputFile(PHOTO_PATH)
         msg_photo = await message.answer_photo(photo=photo)
         bot_messages[user_id].append(msg_photo)
         
-        # 3. Присылаем текст с датой/местом/временем
         await send_bot_message(user_id, TEXT_FINAL_INFO)
-        
-        # 4. Присылаем финальный текст с HTML-разметкой
         await send_bot_message(user_id, TEXT_FINAL_BONUS, parse_mode="HTML")
         
-        # Отправляем инфу тебе
         info = user_info.get(user_id, {})
         admin_msg = f"✅ Придёт: *{info.get('fio', '—')}* (@{message.from_user.username or '—'})\n"
         admin_msg += f"🕐 Время: *{info.get('arrival_time', '13:00')}*\n"
@@ -332,7 +327,6 @@ async def handle_text(message: Message):
         await bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
         user_steps[user_id] = "done"
 
-# --- ВРЕМЯ И НАПИТКИ ---
 @dp.callback_query(F.data == "time_yes")
 async def on_time_yes(callback: CallbackQuery):
     user_steps[callback.from_user.id] = "my_drink"
@@ -368,7 +362,6 @@ async def on_my_drink(callback: CallbackQuery):
     my_drink = callback.data.split(":", 1)[1]
     user_info[user_id]["my_drink"] = my_drink
     await delete_prev_messages(user_id)
-    
     if user_info[user_id].get("plus_one") == "yes":
         user_steps[user_id] = "wait_plus_name"
         await send_bot_message(user_id, "Напиши имя твоего спутника (текстом):")
@@ -392,34 +385,163 @@ async def on_restart(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_steps[user_id] = None
     user_info[user_id] = {}
-    
     await delete_prev_messages(user_id) 
-    
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await callback.message.answer_photo(photo=photo)
     if user_id not in bot_messages:
         bot_messages[user_id] = []
     bot_messages[user_id].append(msg_photo)
-    
     await send_bot_message(user_id, TEXT_LYRICS, reply_markup=start_kb(), parse_mode="Markdown")
     await callback.answer()
 
-# --- АДМИН-ПАНЕЛЬ ---
+# ===============================================
+# --- АДМИН-КОМАНДЫ ---
+# ===============================================
+
 @dp.message(Command("list"))
 async def cmd_list(message: Message):
     if message.from_user.id != ADMIN_ID: return
     if not user_info: return await message.answer("Пока никто не ответил.")
-    lines = ["📋 *Ответы гостей:*\n"]
+    lines = ["📋 *Все ответы гостей:*\n"]
     for uid, a in user_info.items():
-        if a.get("preferences"):
-            pref = a.get('preferences', '—')
-            fio = a.get('fio', '—')
+        fio = a.get('fio', '—')
+        pref = a.get('preferences', '—')
+        if a.get("status") == "Не придёт":
+            lines.append(f"❌ {fio} — Не придёт")
+        elif pref == "Думает":
+            lines.append(f"🤔 {fio} — Думает (до {a.get('think_date', '—')})")
+        elif pref != '—':
             time = a.get('arrival_time', '13:00')
             if a.get('plus_one') == "yes":
                 lines.append(f"✅ {fio} (в {time}) + {a.get('plus_one_name')} — {a.get('my_drink')} / {a.get('friend_drink')} (Пожелания: {pref})")
             else:
                 lines.append(f"✅ {fio} (в {time}) — {a.get('my_drink')} (Пожелания: {pref})")
     await message.answer("\n".join(lines), parse_mode="Markdown")
+
+@dp.message(Command("stats"))
+async def cmd_stats(message: Message):
+    if message.from_user.id != ADMIN_ID: return
+    total = len([u for u in user_info.values() if u.get("preferences") or u.get("status")])
+    if not total: return await message.answer("Пока никто не ответил.")
+    
+    coming = [u for u in user_info.values() if u.get("preferences") not in ["Думает", "Отказ", None, "—"]]
+    not_coming = [u for u in user_info.values() if u.get("status") == "Не придёт"]
+    thinking = [u for u in user_info.values() if u.get("preferences") == "Думает"]
+    
+    plus_ones = len([u for u in coming if u.get("plus_one") == "yes"])
+    total_guests = len(coming) + plus_ones
+    
+    drinks = {}
+    for u in coming:
+        d = u.get("my_drink")
+        if d: drinks[d] = drinks.get(d, 0) + 1
+        if u.get("plus_one") == "yes":
+            fd = u.get("friend_drink")
+            if fd: drinks[fd] = drinks.get(fd, 0) + 1
+
+    drinks_text = "\n".join([f"   • {k}: {v}" for k, v in drinks.items()])
+    
+    stats_text = (
+        f"📊 *Статистика:*\n\n"
+        f"👥 Всего ответило: {total}\n"
+        f"✅ Придут: {len(coming)} (всего гостей с +1: {total_guests})\n"
+        f"🤔 Думают: {len(thinking)}\n"
+        f"❌ Не придут: {len(not_coming)}\n\n"
+        f"🍹 *Напитки:*\n{drinks_text if drinks_text else '   Пока нет данных'}"
+    )
+    await message.answer(stats_text, parse_mode="Markdown")
+
+@dp.message(Command("say"))
+async def cmd_say(message: Message):
+    if message.from_user.id != ADMIN_ID: return
+    text_to_send = message.text.replace("/say", "").strip()
+    if not text_to_send: return await message.answer("Напиши текст после команды, например: /say Привет, друзья!")
+    
+    success_count = 0
+    for user_id, info in user_info.items():
+        if info.get("preferences") and info.get("preferences") != "Отказ":
+            try:
+                await bot.send_message(chat_id=user_id, text=text_to_send)
+                success_count += 1
+                await asyncio.sleep(0.1)
+            except Exception:
+                pass
+    await message.answer(f"✅ Рассылка завершена! Сообщение улетело {success_count} гостям.")
+
+@dp.message(Command("export"))
+async def cmd_export(message: Message):
+    if message.from_user.id != ADMIN_ID: return
+    if not user_info: return await message.answer("Нет данных для выгрузки.")
+    
+    filename = "guests.csv"
+    with open(filename, mode="w", encoding="utf-8-sig", newline="") as file:
+        writer = csv.writer(file, delimiter=";")
+        writer.writerow(["ФИО", "Статус", "Время", "Напиток", "Спутник", "Напиток спутника", "Пожелания", "Дата ответа (Думает)"])
+        for u in user_info.values():
+            if u.get("preferences") or u.get("status"):
+                writer.writerow([
+                    u.get("fio", ""), 
+                    "Придёт" if u.get("preferences") not in ["Думает", "Отказ", None] else u.get("preferences"), 
+                    u.get("arrival_time", ""),
+                    u.get("my_drink", ""),
+                    u.get("plus_one_name", ""),
+                    u.get("friend_drink", ""),
+                    u.get("preferences", ""),
+                    u.get("think_date", "")
+                ])
+    
+    document = FSInputFile(filename)
+    await message.answer_document(document, caption="📁 Выгрузка всех ответов гостей")
+    os.remove(filename)
+
+@dp.message(Command("kick"))
+async def cmd_kick(message: Message):
+    if message.from_user.id != ADMIN_ID: return
+    args = message.text.replace("/kick", "").strip()
+    if not args: return await message.answer("Напиши ник или ID, например: /kick @username")
+    
+    kicked = False
+    for uid, info in list(user_info.items()):
+        if f"@{info.get('username', '')}" == args or str(uid) == args:
+            del user_info[uid]
+            kicked = True
+            break
+            
+    if kicked:
+        await message.answer(f"🗑 Пользователь {args} успешно удален из базы.")
+    else:
+        await message.answer(f"❌ Пользователь {args} не найден. (Попробуй его цифровой ID)")
+
+@dp.message(Command("broadcast_pic"))
+async def cmd_broadcast_pic(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID: return
+    await state.set_state(AdminStates.wait_broadcast_pic)
+    await message.answer("Пришли мне фотографию, которую нужно разослать:")
+
+@dp.message(AdminStates.wait_broadcast_pic, F.photo)
+async def process_broadcast_pic(message: Message, state: FSMContext):
+    photo_id = message.photo[-1].file_id
+    await state.update_data(photo=photo_id)
+    await state.set_state(AdminStates.wait_broadcast_text)
+    await message.answer("Фото принято! Теперь напиши текст, который будет подписью к нему:")
+
+@dp.message(AdminStates.wait_broadcast_text, F.text)
+async def process_broadcast_text(message: Message, state: FSMContext):
+    data = await state.get_data()
+    photo_id = data.get("photo")
+    text = message.text
+    await state.clear()
+    
+    count = 0
+    for user_id, info in user_info.items():
+        if info.get("preferences") and info.get("preferences") != "Отказ":
+            try:
+                await bot.send_photo(chat_id=user_id, photo=photo_id, caption=text)
+                count += 1
+                await asyncio.sleep(0.1)
+            except Exception:
+                pass
+    await message.answer(f"✅ Рассылка с картинкой завершена! Отправлено {count} гостям.")
 
 async def main():
     asyncio.create_task(reminder_loop())

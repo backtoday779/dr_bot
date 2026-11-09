@@ -12,10 +12,18 @@ PHOTO_PATH = "invite.jpg"
 PHOTO_MESTO1 = "mesto1.jpg"
 PHOTO_MESTO2 = "mesto2.jpg"
 
-REMINDER_TIME = datetime(2026, 11, 19, 12, 0) 
+# Напоминание за 2 дня (18 ноября в 12:00)
+REMINDER_TIME = datetime(2026, 11, 18, 12, 0) 
 
 # ====== ТЕКСТЫ ======
-TEXT_START = ""
+# Текст песни под афишей
+TEXT_LYRICS = (
+    "💽 *press2p - snowfall*\n\n"
+    "_Я бы опять поднял пластмассовый стакан\n"
+    "Прошёлся по всем именам, даже тем, кого запамятовал\n"
+    "По тем, чьи лица годы не видал\n"
+    "Я скучал, хранил, любил и ждал_"
+)
 
 TEXT_MESTO = (
     "📅 Когда: 21.11.2026 (суббота)\n"
@@ -28,6 +36,8 @@ TEXT_MESTO = (
 
 TEXT_DECLINE = "Очень жаль! Я не забыл нашу дружбу! Всё же буду рад тебя видеть! 🥺"
 TEXT_BONUS = "Скоро тут будет инфа. 👀"
+TEXT_REMINDER = "Привет! Напоминаю, что послезавтра, 21 ноября, мой День Рождения! 🥳\n📍 Место: Чайковичи, СО Рассвет 428 (Беседка: Русская изба)\n🕐 Встречаемся в 13:00\n\nЖду тебя, ничего не забудь! 🎉"
+
 # ================================================
 
 bot = Bot(token=BOT_TOKEN)
@@ -35,7 +45,6 @@ dp = Dispatcher()
 
 user_steps = {} 
 user_info = {}
-# Храним ID сообщений бота, чтобы их удалять
 bot_messages = {} 
 reminder_sent = False
 
@@ -74,7 +83,7 @@ def my_drinks_kb():
     kb.button(text="🍷 Вино", callback_data="mydrink:Вино")
     kb.button(text="🧞‍♂️ Водка", callback_data="mydrink:Водка")
     kb.button(text="🧗🏻 Самогон", callback_data="mydrink:Самогон")
-    kb.button(text="🥃 Виски", callback_data="mydrink:Виски")
+    kb.button(text="🥤 Виски", callback_data="mydrink:Виски")
     kb.button(text="🏋🏻 Другое / Не пью", callback_data="mydrink_custom")
     kb.adjust(2, 2, 2, 1)
     return kb.as_markup()
@@ -94,6 +103,11 @@ def friend_drinks_kb():
 def final_kb():
     kb = InlineKeyboardBuilder()
     kb.button(text="👀 А может тебе интересно?", callback_data="bonus_info")
+    return kb.as_markup()
+
+def restart_kb():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Начать заново", callback_data="restart")
     return kb.as_markup()
 
 # --- УТИЛИТА ДЛЯ УДАЛЕНИЯ МУСОРА ---
@@ -126,7 +140,7 @@ async def reminder_loop():
             for user_id, info in user_info.items():
                 if info.get("preferences"):
                     try:
-                        await bot.send_photo(chat_id=user_id, photo=photo, caption="Привет! Напоминаю, что завтра мой День Рождения! 🥳\n📍 Чайковичи, СО Рассвет 428 (Русская изба)\n🕐 В 13:00\n\nЖду тебя! 🎉")
+                        await bot.send_photo(chat_id=user_id, photo=photo, caption=TEXT_REMINDER)
                         await asyncio.sleep(0.1)
                     except Exception:
                         pass
@@ -139,8 +153,18 @@ async def cmd_start(message: Message):
     user_steps[message.from_user.id] = None
     user_info[message.from_user.id] = {}
     await delete_prev_messages(message.from_user.id)
+    
+    # 1. Отправляем афишу
     photo = FSInputFile(PHOTO_PATH)
-    await message.answer_photo(photo=photo, reply_markup=start_kb())
+    await message.answer_photo(photo=photo)
+    
+    # 2. Отправляем текст песни с кнопкой "О, как!"
+    await send_bot_message(
+        message.from_user.id, 
+        TEXT_LYRICS, 
+        reply_markup=start_kb(), 
+        parse_mode="Markdown"
+    )
 
 @dp.callback_query(F.data == "start_details")
 async def on_start_details(callback: CallbackQuery):
@@ -161,7 +185,7 @@ async def on_yes_come(callback: CallbackQuery):
     await send_bot_message(callback.from_user.id, "Ты будешь один или с кем-то?", reply_markup=alone_kb())
     await callback.answer()
 
-@dp.callback_query(F.data == "alone_yes") # НАЖАЛ "ОДИН"
+@dp.callback_query(F.data == "alone_yes")
 async def on_alone_yes(callback: CallbackQuery):
     await delete_prev_messages(callback.from_user.id)
     user_info[callback.from_user.id]["plus_one"] = None
@@ -169,7 +193,7 @@ async def on_alone_yes(callback: CallbackQuery):
     await send_bot_message(callback.from_user.id, "Супер! Напиши, пожалуйста, свое ФИО (полностью):")
     await callback.answer()
 
-@dp.callback_query(F.data == "alone_no") # НАЖАЛ "НЕ ОДИН"
+@dp.callback_query(F.data == "alone_no")
 async def on_alone_no(callback: CallbackQuery):
     await delete_prev_messages(callback.from_user.id)
     user_info[callback.from_user.id]["plus_one"] = "yes"
@@ -204,19 +228,19 @@ async def handle_text(message: Message):
         user_info[user_id]["fio"] = message.text
         user_steps[user_id] = "wait_time"
         await delete_prev_messages(user_id)
-        await send_bot_message(user_id, f"Записал! *{message.text}*.\n\n🕐 Время встречи в 13:00.\nУспеваешь к этому времени?", reply_markup=time_kb(), parse_mode="Markdown")
+        await send_bot_message(user_id, "🕐 Время встречи в 13:00.\nУспеваешь к этому времени?", reply_markup=time_kb())
 
     elif step == "wait_fio_think":
         user_info[user_id]["fio"] = message.text
         user_steps[user_id] = "wait_date_think"
         await delete_prev_messages(user_id)
-        await send_bot_message(user_id, "Когда дашь ответ? (напиши дату текстом, например: 12.11.2026)")
+        await send_bot_message(user_id, "Когда дашь ответ? (напиши дату текстом).\nИнформацию нужно предоставить до 15.11.2026.")
 
     elif step == "wait_date_think":
         user_info[user_id]["think_date"] = message.text
         user_steps[user_id] = None
         await delete_prev_messages(user_id)
-        await send_bot_message(user_id, "Скорее возвращайся с обратной связью! 👋")
+        await send_bot_message(user_id, "Скорее возвращайся с обратной связью! 👋", reply_markup=restart_kb())
         
         info = user_info[user_id]
         await bot.send_message(ADMIN_ID, f"🤔 *{info['fio']}* думает и даст ответ *{info['think_date']}*", parse_mode="Markdown")
@@ -225,29 +249,29 @@ async def handle_text(message: Message):
         user_info[user_id]["arrival_time"] = message.text
         user_steps[user_id] = "my_drink"
         await delete_prev_messages(user_id)
-        await send_bot_message(user_id, f"Записал, будешь в *{message.text}*! А что пьёшь ты? 👇", reply_markup=my_drinks_kb(), parse_mode="Markdown")
+        await send_bot_message(user_id, "А что пьёшь ты? 👇", reply_markup=my_drinks_kb())
 
     elif step == "wait_custom_my_drink":
         user_info[user_id]["my_drink"] = message.text
         await delete_prev_messages(user_id)
         if user_info[user_id].get("plus_one") == "yes":
             user_steps[user_id] = "wait_plus_name"
-            await send_bot_message(user_id, f"Записал, ты будешь пить: *{message.text}*.\n\nНапиши имя твоего спутника (текстом):", parse_mode="Markdown")
+            await send_bot_message(user_id, "Напиши имя твоего спутника (текстом):")
         else:
             user_steps[user_id] = "preferences"
-            await send_bot_message(user_id, f"Записал! Ты пьёшь: *{message.text}* 🥂\n\nОтлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇", parse_mode="Markdown")
+            await send_bot_message(user_id, "Отлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇")
 
     elif step == "wait_plus_name":
         user_info[user_id]["plus_one_name"] = message.text
         user_steps[user_id] = "friend_drink"
         await delete_prev_messages(user_id)
-        await send_bot_message(user_id, f"Записал! Твой спутник: *{message.text}*.\nА что он(а) пьёт? 👇", reply_markup=friend_drinks_kb(), parse_mode="Markdown")
+        await send_bot_message(user_id, "А что он(а) пьёт? 👇", reply_markup=friend_drinks_kb())
 
     elif step == "wait_custom_friend_drink":
         user_info[user_id]["friend_drink"] = message.text
         user_steps[user_id] = "preferences"
         await delete_prev_messages(user_id)
-        await send_bot_message(user_id, f"Записал! Твой спутник пьёт: *{message.text}* 🥂\n\nОтлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇", parse_mode="Markdown")
+        await send_bot_message(user_id, "Отлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇")
     
     elif step == "preferences":
         user_info[user_id]["preferences"] = message.text
@@ -257,8 +281,8 @@ async def handle_text(message: Message):
         info = user_info.get(user_id, {})
         admin_msg = f"✅ Придёт: *{info.get('fio', '—')}* (@{message.from_user.username or '—'})\n"
         admin_msg += f"🕐 Время: *{info.get('arrival_time', '13:00')}*\n"
-        if info.get("plus_one") and info.get("plus_one") != "yes":
-            admin_msg += f"👫 С ним/ней: *{info['plus_one_name']}*\n"
+        if info.get("plus_one") == "yes":
+            admin_msg += f"👫 С ним/ней: *{info.get('plus_one_name')}*\n"
             admin_msg += f"🍹 Твой напиток: *{info.get('my_drink')}*\n"
             admin_msg += f"🍹 Напиток спутника: *{info.get('friend_drink')}*\n"
         else:
@@ -273,7 +297,7 @@ async def on_time_yes(callback: CallbackQuery):
     user_steps[callback.from_user.id] = "my_drink"
     user_info[callback.from_user.id]["arrival_time"] = "13:00"
     await delete_prev_messages(callback.from_user.id)
-    await send_bot_message(callback.from_user.id, "Супер, записал! А что пьёшь ты? 👇", reply_markup=my_drinks_kb())
+    await send_bot_message(callback.from_user.id, "А что пьёшь ты? 👇", reply_markup=my_drinks_kb())
     await callback.answer()
 
 @dp.callback_query(F.data == "time_no")
@@ -306,10 +330,10 @@ async def on_my_drink(callback: CallbackQuery):
     
     if user_info[user_id].get("plus_one") == "yes":
         user_steps[user_id] = "wait_plus_name"
-        await send_bot_message(user_id, f"Записал, ты пьёшь: *{my_drink}* 🥂\n\nНапиши имя твоего спутника (текстом):", parse_mode="Markdown")
+        await send_bot_message(user_id, "Напиши имя твоего спутника (текстом):")
     else:
         user_steps[user_id] = "preferences"
-        await send_bot_message(user_id, f"Записал! Ты пьёшь: *{my_drink}* 🥂\n\nОтлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇", parse_mode="Markdown")
+        await send_bot_message(user_id, "Отлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇")
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("frienddrink:"))
@@ -319,13 +343,24 @@ async def on_friend_drink(callback: CallbackQuery):
     user_info[user_id]["friend_drink"] = friend_drink
     user_steps[user_id] = "preferences"
     await delete_prev_messages(user_id)
-    await send_bot_message(user_id, f"Записал! Твой спутник пьёт: *{friend_drink}* 🥂\n\nОтлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇", parse_mode="Markdown")
+    await send_bot_message(user_id, "Отлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇")
     await callback.answer()
 
 @dp.callback_query(F.data == "bonus_info")
 async def on_bonus_info(callback: CallbackQuery):
     await delete_prev_messages(callback.from_user.id)
     await send_bot_message(callback.from_user.id, TEXT_BONUS)
+    await callback.answer()
+
+@dp.callback_query(F.data == "restart")
+async def on_restart(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_steps[user_id] = None
+    user_info[user_id] = {}
+    await delete_prev_messages(user_id)
+    photo = FSInputFile(PHOTO_PATH)
+    await callback.message.answer_photo(photo=photo)
+    await send_bot_message(user_id, TEXT_LYRICS, reply_markup=start_kb(), parse_mode="Markdown")
     await callback.answer()
 
 # --- АДМИН-ПАНЕЛЬ ---
@@ -351,4 +386,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    

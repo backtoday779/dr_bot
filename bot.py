@@ -40,7 +40,24 @@ TEXT_FINAL_INFO = (
 )
 
 TEXT_DECLINE = "Очень жаль! Я не забыл нашу дружбу! Всё же буду рад тебя видеть! 🥺"
-TEXT_BONUS = "Скоро тут будет инфа. 👀"
+
+# 🔥 ТВОЙ НОВЫЙ ТЕКСТ ДЛЯ КНОПКИ "А МОЖЕТ ТЕБЕ ИНТЕРЕСНО?"
+TEXT_BONUS = (
+    "На День Рождение жду с хорошим настроением!\n"
+    "Но если будет плохое, не беда, исправим! \n"
+    "Стиль одежды не трактую. \n"
+    "Сам буду в деловом.\n\n"
+    "*Любая творческая инициатива приветствуется! \n"
+    "Дай знать если есть идея: __словом «Идея»__ в личку._\n"
+    "*Свяжу с ответственным лицом!*\n\n"
+    "Решил крепко заморочиться.\n"
+    "Детали - это важно. \n"
+    "Сделал акцент на каждой мелочи (от кода до визуала).\n"
+    "Бота написал на 90% своими силами. \n\n"
+    "Спасибо, что листаешь до конца! \n"
+    "До встречи, друг! 🤍"
+)
+
 TEXT_REMINDER = "Привет! Напоминаю, что послезавтра, 21 ноября, мой День Рождения! 🥳\n📍 Место: Чайковичи, СО Рассвет 428 (Беседка: Русская изба)\n🕐 Встречаемся в 13:00\n\nЖду тебя, ничего не забудь! 🎉"
 
 # ================================================
@@ -300,7 +317,7 @@ async def handle_text(message: Message):
         # 3. Присылаем НОВЫЙ текст с датой/местом/временем
         await send_bot_message(user_id, TEXT_FINAL_INFO)
         
-        # 4. Присылаем финальное сообщение с кнопкой (БЕЗ "Супер" И С НОВЫМИ ЭМОДЗИ)
+        # 4. Присылаем финальное сообщение с кнопкой
         await send_bot_message(user_id, "Всё записал, буду ждать тебя!🎆\nСделаю напоминалку 18.11.2026🎂", reply_markup=final_kb())
         
         # Отправляем инфу тебе
@@ -374,8 +391,21 @@ async def on_friend_drink(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "bonus_info")
 async def on_bonus_info(callback: CallbackQuery):
-    await delete_prev_messages(callback.from_user.id)
-    await send_bot_message(callback.from_user.id, TEXT_BONUS)
+    user_id = callback.from_user.id
+    
+    # 1. Удаляем сообщения
+    await delete_prev_messages(user_id)
+    
+    # 2. Присылаем афишу заново
+    photo = FSInputFile(PHOTO_PATH)
+    msg_photo = await callback.message.answer_photo(photo=photo)
+    if user_id not in bot_messages:
+        bot_messages[user_id] = []
+    bot_messages[user_id].append(msg_photo)
+    
+    # 3. Присылаем ТВОЙ НОВЫЙ ТЕКСТ БЕЗ КНОПКИ
+    await send_bot_message(user_id, TEXT_BONUS, parse_mode="Markdown")
+    
     await callback.answer()
 
 @dp.callback_query(F.data == "restart")
@@ -383,12 +413,15 @@ async def on_restart(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_steps[user_id] = None
     user_info[user_id] = {}
+    
     await delete_prev_messages(user_id) 
+    
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await callback.message.answer_photo(photo=photo)
     if user_id not in bot_messages:
         bot_messages[user_id] = []
     bot_messages[user_id].append(msg_photo)
+    
     await send_bot_message(user_id, TEXT_LYRICS, reply_markup=start_kb(), parse_mode="Markdown")
     await callback.answer()
 

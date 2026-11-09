@@ -32,6 +32,12 @@ TEXT_MESTO = (
     "Я не мог быть постоянно рядом. Но я никого не забыл. И вот мне исполняется 25 лет. Для меня - это подводящая круглая дата."
 )
 
+TEXT_FINAL_INFO = (
+    "📅 Когда: 21.11.2026 (суббота)\n"
+    "📍 Где: Чайковичи, СО Рассвет 428\n"
+    "🕐 Время встречи: 13:00"
+)
+
 TEXT_DECLINE = "Очень жаль! Я не забыл нашу дружбу! Всё же буду рад тебя видеть! 🥺"
 TEXT_BONUS = "Скоро тут будет инфа. 👀"
 TEXT_REMINDER = "Привет! Напоминаю, что послезавтра, 21 ноября, мой День Рождения! 🥳\n📍 Место: Чайковичи, СО Рассвет 428 (Беседка: Русская изба)\n🕐 Встречаемся в 13:00\n\nЖду тебя, ничего не забудь! 🎉"
@@ -109,33 +115,14 @@ def restart_kb():
     return kb.as_markup()
 
 # --- УТИЛИТА ДЛЯ УДАЛЕНИЯ МУСОРА ---
-# delete_mode:
-# "all" - удаляет всё (для старта)
-# "keep_afisha" - удаляет всё КРОМЕ афиши (для Думаю/Не приду)
-# "keep_all" - удаляет только текст с вопросами, оставляет фото и текст места (для Газ)
-async def delete_prev_messages(chat_id, mode="all"):
+async def delete_prev_messages(chat_id):
     if chat_id in bot_messages:
         for msg in bot_messages[chat_id]:
-            if mode == "keep_afisha":
-                # Оставляем только одиночные фото (афишу)
-                if msg.photo and not msg.media_group_id:
-                    continue
-            elif mode == "keep_all":
-                # Оставляем фото, альбомы и наш текст с местом
-                if msg.photo or msg.media_group_id or msg.text == TEXT_MESTO:
-                    continue
             try:
                 await bot.delete_message(chat_id, msg.message_id)
             except Exception:
                 pass
-        
-        # Обновляем список
-        if mode == "keep_afisha":
-            bot_messages[chat_id] = [msg for msg in bot_messages[chat_id] if (msg.photo and not msg.media_group_id)]
-        elif mode == "keep_all":
-            bot_messages[chat_id] = [msg for msg in bot_messages[chat_id] if (msg.photo or msg.media_group_id or msg.text == TEXT_MESTO)]
-        else:
-            bot_messages[chat_id] = []
+        bot_messages[chat_id] = []
     else:
         bot_messages[chat_id] = []
 
@@ -169,7 +156,7 @@ async def reminder_loop():
 async def cmd_start(message: Message):
     user_steps[message.from_user.id] = None
     user_info[message.from_user.id] = {}
-    await delete_prev_messages(message.from_user.id, mode="all")
+    await delete_prev_messages(message.from_user.id)
     
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await message.answer_photo(photo=photo)
@@ -186,7 +173,7 @@ async def cmd_start(message: Message):
 
 @dp.callback_query(F.data == "start_details")
 async def on_start_details(callback: CallbackQuery):
-    await delete_prev_messages(callback.from_user.id, mode="keep_afisha") 
+    await delete_prev_messages(callback.from_user.id)
     
     media = [
         InputMediaPhoto(media=FSInputFile(PHOTO_MESTO1)),
@@ -205,15 +192,14 @@ async def on_start_details(callback: CallbackQuery):
 # --- ВЕТКА "ГАЗ" ---
 @dp.callback_query(F.data == "yes_come")
 async def on_yes_come(callback: CallbackQuery):
-    # Оставляем фото и текст места!
-    await delete_prev_messages(callback.from_user.id, mode="keep_all")
+    await delete_prev_messages(callback.from_user.id)
     user_info[callback.from_user.id] = {"fio": ""} 
     await send_bot_message(callback.from_user.id, "Ты будешь один или с кем-то?", reply_markup=alone_kb())
     await callback.answer()
 
 @dp.callback_query(F.data == "alone_yes")
 async def on_alone_yes(callback: CallbackQuery):
-    await delete_prev_messages(callback.from_user.id, mode="keep_all")
+    await delete_prev_messages(callback.from_user.id)
     user_info[callback.from_user.id]["plus_one"] = None
     user_steps[callback.from_user.id] = "wait_fio"
     await send_bot_message(callback.from_user.id, "Супер! Напиши, пожалуйста, свое ФИО (полностью):")
@@ -221,7 +207,7 @@ async def on_alone_yes(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "alone_no")
 async def on_alone_no(callback: CallbackQuery):
-    await delete_prev_messages(callback.from_user.id, mode="keep_all")
+    await delete_prev_messages(callback.from_user.id)
     user_info[callback.from_user.id]["plus_one"] = "yes"
     user_steps[callback.from_user.id] = "wait_fio"
     await send_bot_message(callback.from_user.id, "Супер! Напиши, пожалуйста, свое ФИО (полностью):")
@@ -230,8 +216,7 @@ async def on_alone_no(callback: CallbackQuery):
 # --- ВЕТКА "ДУМАЮ" ---
 @dp.callback_query(F.data == "think_come")
 async def on_think_come(callback: CallbackQuery):
-    # УДАЛЯЕМ ВСЁ КРОМЕ АФИШИ
-    await delete_prev_messages(callback.from_user.id, mode="keep_afisha") 
+    await delete_prev_messages(callback.from_user.id) 
     user_steps[callback.from_user.id] = "wait_fio_think"
     await send_bot_message(callback.from_user.id, "Напиши, пожалуйста, свое ФИО:")
     await callback.answer()
@@ -239,8 +224,7 @@ async def on_think_come(callback: CallbackQuery):
 # --- ВЕТКА "НЕ ПРИДУ" ---
 @dp.callback_query(F.data == "no_come")
 async def on_no_come(callback: CallbackQuery):
-    # УДАЛЯЕМ ВСЁ КРОМЕ АФИШИ
-    await delete_prev_messages(callback.from_user.id, mode="keep_afisha") 
+    await delete_prev_messages(callback.from_user.id) 
     await send_bot_message(callback.from_user.id, TEXT_DECLINE, reply_markup=restart_kb())
     await callback.answer()
     user = callback.from_user
@@ -255,19 +239,19 @@ async def handle_text(message: Message):
     if step == "wait_fio":
         user_info[user_id]["fio"] = message.text
         user_steps[user_id] = "wait_time"
-        await delete_prev_messages(user_id, mode="keep_all")
+        await delete_prev_messages(user_id)
         await send_bot_message(user_id, "🕐 Время встречи в 13:00.\nУспеваешь к этому времени?", reply_markup=time_kb())
 
     elif step == "wait_fio_think":
         user_info[user_id]["fio"] = message.text
         user_steps[user_id] = "wait_date_think"
-        await delete_prev_messages(user_id, mode="keep_afisha")
+        await delete_prev_messages(user_id)
         await send_bot_message(user_id, "Когда дашь ответ? (напиши дату текстом).\nИнформацию нужно предоставить до 15.11.2026.")
 
     elif step == "wait_date_think":
         user_info[user_id]["think_date"] = message.text
         user_steps[user_id] = None
-        await delete_prev_messages(user_id, mode="keep_afisha")
+        await delete_prev_messages(user_id)
         await send_bot_message(user_id, "Скорее возвращайся с обратной связью! 👋", reply_markup=restart_kb())
         
         info = user_info[user_id]
@@ -276,12 +260,12 @@ async def handle_text(message: Message):
     elif step == "wait_custom_time":
         user_info[user_id]["arrival_time"] = message.text
         user_steps[user_id] = "my_drink"
-        await delete_prev_messages(user_id, mode="keep_all")
+        await delete_prev_messages(user_id)
         await send_bot_message(user_id, "А что пьёшь ты? 👇", reply_markup=my_drinks_kb())
 
     elif step == "wait_custom_my_drink":
         user_info[user_id]["my_drink"] = message.text
-        await delete_prev_messages(user_id, mode="keep_all")
+        await delete_prev_messages(user_id)
         if user_info[user_id].get("plus_one") == "yes":
             user_steps[user_id] = "wait_plus_name"
             await send_bot_message(user_id, "Напиши имя твоего спутника (текстом):")
@@ -292,20 +276,33 @@ async def handle_text(message: Message):
     elif step == "wait_plus_name":
         user_info[user_id]["plus_one_name"] = message.text
         user_steps[user_id] = "friend_drink"
-        await delete_prev_messages(user_id, mode="keep_all")
+        await delete_prev_messages(user_id)
         await send_bot_message(user_id, "А что он(а) пьёт? 👇", reply_markup=friend_drinks_kb())
 
     elif step == "wait_custom_friend_drink":
         user_info[user_id]["friend_drink"] = message.text
         user_steps[user_id] = "preferences"
-        await delete_prev_messages(user_id, mode="keep_all")
+        await delete_prev_messages(user_id)
         await send_bot_message(user_id, "Отлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇")
     
     elif step == "preferences":
         user_info[user_id]["preferences"] = message.text
-        await delete_prev_messages(user_id, mode="keep_all")
+        
+        # 1. Удаляем всё
+        await delete_prev_messages(user_id)
+        
+        # 2. Присылаем заново афишу
+        photo = FSInputFile(PHOTO_PATH)
+        msg_photo = await message.answer_photo(photo=photo)
+        bot_messages[user_id].append(msg_photo)
+        
+        # 3. Присылаем текст с датой/местом/временем
+        await send_bot_message(user_id, TEXT_FINAL_INFO)
+        
+        # 4. Присылаем финальное сообщение с кнопкой
         await send_bot_message(user_id, "Супер! Всё записал, буду ждать тебя! 🎉\nНа всякий случай напомню тебе 19.11.2026 🎂", reply_markup=final_kb())
         
+        # Отправляем инфу тебе
         info = user_info.get(user_id, {})
         admin_msg = f"✅ Придёт: *{info.get('fio', '—')}* (@{message.from_user.username or '—'})\n"
         admin_msg += f"🕐 Время: *{info.get('arrival_time', '13:00')}*\n"
@@ -324,28 +321,28 @@ async def handle_text(message: Message):
 async def on_time_yes(callback: CallbackQuery):
     user_steps[callback.from_user.id] = "my_drink"
     user_info[callback.from_user.id]["arrival_time"] = "13:00"
-    await delete_prev_messages(callback.from_user.id, mode="keep_all")
+    await delete_prev_messages(callback.from_user.id)
     await send_bot_message(callback.from_user.id, "А что пьёшь ты? 👇", reply_markup=my_drinks_kb())
     await callback.answer()
 
 @dp.callback_query(F.data == "time_no")
 async def on_time_no(callback: CallbackQuery):
     user_steps[callback.from_user.id] = "wait_custom_time"
-    await delete_prev_messages(callback.from_user.id, mode="keep_all")
+    await delete_prev_messages(callback.from_user.id)
     await send_bot_message(callback.from_user.id, "Понял! Во сколько ты будешь? (напиши время текстом, например: 14:30)")
     await callback.answer()
 
 @dp.callback_query(F.data == "mydrink_custom")
 async def on_my_drink_custom(callback: CallbackQuery):
     user_steps[callback.from_user.id] = "wait_custom_my_drink"
-    await delete_prev_messages(callback.from_user.id, mode="keep_all")
+    await delete_prev_messages(callback.from_user.id)
     await send_bot_message(callback.from_user.id, "Напиши, пожалуйста, что ты будешь пить (или напиши «Не пью»):")
     await callback.answer()
 
 @dp.callback_query(F.data == "frienddrink_custom")
 async def on_friend_drink_custom(callback: CallbackQuery):
     user_steps[callback.from_user.id] = "wait_custom_friend_drink"
-    await delete_prev_messages(callback.from_user.id, mode="keep_all")
+    await delete_prev_messages(callback.from_user.id)
     await send_bot_message(callback.from_user.id, "Напиши, пожалуйста, что будет пить твой спутник:")
     await callback.answer()
 
@@ -354,7 +351,7 @@ async def on_my_drink(callback: CallbackQuery):
     user_id = callback.from_user.id
     my_drink = callback.data.split(":", 1)[1]
     user_info[user_id]["my_drink"] = my_drink
-    await delete_prev_messages(user_id, mode="keep_all")
+    await delete_prev_messages(user_id)
     
     if user_info[user_id].get("plus_one") == "yes":
         user_steps[user_id] = "wait_plus_name"
@@ -370,13 +367,13 @@ async def on_friend_drink(callback: CallbackQuery):
     friend_drink = callback.data.split(":", 1)[1]
     user_info[user_id]["friend_drink"] = friend_drink
     user_steps[user_id] = "preferences"
-    await delete_prev_messages(user_id, mode="keep_all")
+    await delete_prev_messages(user_id)
     await send_bot_message(user_id, "Отлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇")
     await callback.answer()
 
 @dp.callback_query(F.data == "bonus_info")
 async def on_bonus_info(callback: CallbackQuery):
-    await delete_prev_messages(callback.from_user.id, mode="keep_afisha")
+    await delete_prev_messages(callback.from_user.id)
     await send_bot_message(callback.from_user.id, TEXT_BONUS)
     await callback.answer()
 
@@ -385,7 +382,7 @@ async def on_restart(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_steps[user_id] = None
     user_info[user_id] = {}
-    await delete_prev_messages(user_id, mode="all") 
+    await delete_prev_messages(user_id) 
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await callback.message.answer_photo(photo=photo)
     if user_id not in bot_messages:

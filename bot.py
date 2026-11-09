@@ -169,12 +169,16 @@ async def cmd_start(message: Message):
 @dp.callback_query(F.data == "start_details")
 async def on_start_details(callback: CallbackQuery):
     await delete_prev_messages(callback.from_user.id)
+    
+    # 1. Отправляем ДВЕ фотки места альбомом (без текста)
     media = [
         InputMediaPhoto(media=FSInputFile(PHOTO_MESTO1)),
-        # К тексту второй фотки сразу прикрепляем кнопки
-        InputMediaPhoto(media=FSInputFile(PHOTO_MESTO2), caption=TEXT_MESTO, reply_markup=details_kb())
+        InputMediaPhoto(media=FSInputFile(PHOTO_MESTO2))
     ]
     await callback.message.answer_media_group(media=media)
+    
+    # 2. Отправляем текст и прикрепляем к нему кнопки (слитно!)
+    await send_bot_message(callback.from_user.id, TEXT_MESTO, reply_markup=details_kb())
     await callback.answer()
 
 # --- ВЕТКА "ГАЗ" ---

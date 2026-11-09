@@ -27,12 +27,12 @@ TEXT_MESTO = (
     "📅 Когда: 21.11.2026 (суббота)\n"
     "📍 Где: Чайковичи, СО Рассвет 428\n\n"
     "Я арендовал отапливаемую беседку: Русская изба.\n"
-    "Хочу коллективно отдохнуть в этот день, но в тоже время и дать жару, как раньше.\n"
+    "Хочу коллективно отдохнуть в этот день, но в тоже время и дать жару, как раньше.\n\n"
     "Дорогой друг! Буду очень рад видеть тебя на моем празднике.\n\n"
     "Я не мог быть постоянно рядом.\n"
     "Но я никого не забыл.\n\n"
     "И вот мне исполняется 25 лет.\n" 
-    "Для меня - это подводящая круглая дата.\n"
+    "Для меня - это подводящая круглая дата."
 )
 
 TEXT_FINAL_INFO = (
@@ -44,8 +44,8 @@ TEXT_FINAL_INFO = (
 
 TEXT_DECLINE = "Очень жаль! Я не забыл нашу дружбу! Всё же буду рад тебя видеть! 🥺"
 
-# 🔥 ТВОЙ НОВЫЙ ТЕКСТ ДЛЯ КНОПКИ "А МОЖЕТ ТЕБЕ ИНТЕРЕСНО?"
-TEXT_BONUS = (
+# 🔥 НОВЫЙ ТЕКСТ, КОТОРЫЙ ПРИДЕТ В КОНЦЕ
+TEXT_FINAL_BONUS = (
     "На День Рождение жду с хорошим настроением!\n"
     "Но если будет плохое, не беда, исправим! \n"
     "Стиль одежды не трактую. \n"
@@ -123,11 +123,6 @@ def friend_drinks_kb():
     kb.button(text="🥤 Виски", callback_data="frienddrink:Виски")
     kb.button(text="🏋🏻 Другое / Не пью", callback_data="frienddrink_custom")
     kb.adjust(2, 2, 2, 1)
-    return kb.as_markup()
-
-def final_kb():
-    kb = InlineKeyboardBuilder()
-    kb.button(text="👀 А может тебе интересно?", callback_data="bonus_info")
     return kb.as_markup()
 
 def restart_kb():
@@ -317,11 +312,11 @@ async def handle_text(message: Message):
         msg_photo = await message.answer_photo(photo=photo)
         bot_messages[user_id].append(msg_photo)
         
-        # 3. Присылаем НОВЫЙ текст с датой/местом/временем
+        # 3. Присылаем текст с датой/местом/временем
         await send_bot_message(user_id, TEXT_FINAL_INFO)
         
-        # 4. Присылаем финальное сообщение с кнопкой
-        await send_bot_message(user_id, "Всё записал, буду ждать тебя!🎆\nСделаю напоминалку 18.11.2026🎂", reply_markup=final_kb())
+        # 4. Присылаем финальный красивый текст (без кнопки)
+        await send_bot_message(user_id, TEXT_FINAL_BONUS, parse_mode="Markdown")
         
         # Отправляем инфу тебе
         info = user_info.get(user_id, {})
@@ -390,25 +385,6 @@ async def on_friend_drink(callback: CallbackQuery):
     user_steps[user_id] = "preferences"
     await delete_prev_messages(user_id)
     await send_bot_message(user_id, "Отлично! У тебя есть какие-то предпочтения?\nНапример: Баня, караоке, горячий шашлык 👇")
-    await callback.answer()
-
-@dp.callback_query(F.data == "bonus_info")
-async def on_bonus_info(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    
-    # 1. Удаляем сообщения
-    await delete_prev_messages(user_id)
-    
-    # 2. Присылаем афишу заново
-    photo = FSInputFile(PHOTO_PATH)
-    msg_photo = await callback.message.answer_photo(photo=photo)
-    if user_id not in bot_messages:
-        bot_messages[user_id] = []
-    bot_messages[user_id].append(msg_photo)
-    
-    # 3. Присылаем ТВОЙ НОВЫЙ ТЕКСТ БЕЗ КНОПКИ
-    await send_bot_message(user_id, TEXT_BONUS, parse_mode="Markdown")
-    
     await callback.answer()
 
 @dp.callback_query(F.data == "restart")

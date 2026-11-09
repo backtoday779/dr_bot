@@ -156,14 +156,16 @@ async def reminder_loop():
 async def cmd_start(message: Message):
     user_steps[message.from_user.id] = None
     user_info[message.from_user.id] = {}
+    
+    # Удаляем всё, что бот присылал до этого
     await delete_prev_messages(message.from_user.id)
     
+    # Присылаем афишу
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await message.answer_photo(photo=photo)
-    if message.from_user.id not in bot_messages:
-        bot_messages[message.from_user.id] = []
     bot_messages[message.from_user.id].append(msg_photo)
     
+    # Присылаем текст с кнопкой
     await send_bot_message(
         message.from_user.id, 
         TEXT_LYRICS, 
@@ -382,12 +384,18 @@ async def on_restart(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_steps[user_id] = None
     user_info[user_id] = {}
+    
+    # Стираем абсолютно всё
     await delete_prev_messages(user_id) 
+    
+    # Присылаем афишу
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await callback.message.answer_photo(photo=photo)
     if user_id not in bot_messages:
         bot_messages[user_id] = []
     bot_messages[user_id].append(msg_photo)
+    
+    # Присылаем текст с кнопкой
     await send_bot_message(user_id, TEXT_LYRICS, reply_markup=start_kb(), parse_mode="Markdown")
     await callback.answer()
 

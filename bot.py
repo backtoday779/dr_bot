@@ -32,7 +32,6 @@ TEXT_MESTO = (
     "Я не мог быть постоянно рядом. Но я никого не забыл. И вот мне исполняется 25 лет. Для меня - это подводящая круглая дата."
 )
 
-# 🔥 НОВЫЙ ФИНАЛЬНЫЙ ТЕКСТ
 TEXT_FINAL_INFO = (
     "📅 Когда: 21.11.2026 (суббота)\n"
     "🏠 Беседка: Русская изба.\n"
@@ -158,11 +157,12 @@ async def reminder_loop():
 async def cmd_start(message: Message):
     user_steps[message.from_user.id] = None
     user_info[message.from_user.id] = {}
-    
     await delete_prev_messages(message.from_user.id)
     
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await message.answer_photo(photo=photo)
+    if message.from_user.id not in bot_messages:
+        bot_messages[message.from_user.id] = []
     bot_messages[message.from_user.id].append(msg_photo)
     
     await send_bot_message(
@@ -300,8 +300,8 @@ async def handle_text(message: Message):
         # 3. Присылаем НОВЫЙ текст с датой/местом/временем
         await send_bot_message(user_id, TEXT_FINAL_INFO)
         
-        # 4. Присылаем финальное сообщение с кнопкой
-        await send_bot_message(user_id, "Супер! Всё записал, буду ждать тебя! 🎉\nНа всякий случай напомню тебе 19.11.2026 🎂", reply_markup=final_kb())
+        # 4. Присылаем финальное сообщение с кнопкой (БЕЗ "Супер" И С НОВЫМИ ЭМОДЗИ)
+        await send_bot_message(user_id, "Всё записал, буду ждать тебя!🎆\nСделаю напоминалку 18.11.2026🎂", reply_markup=final_kb())
         
         # Отправляем инфу тебе
         info = user_info.get(user_id, {})
@@ -383,15 +383,12 @@ async def on_restart(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_steps[user_id] = None
     user_info[user_id] = {}
-    
     await delete_prev_messages(user_id) 
-    
     photo = FSInputFile(PHOTO_PATH)
     msg_photo = await callback.message.answer_photo(photo=photo)
     if user_id not in bot_messages:
         bot_messages[user_id] = []
     bot_messages[user_id].append(msg_photo)
-    
     await send_bot_message(user_id, TEXT_LYRICS, reply_markup=start_kb(), parse_mode="Markdown")
     await callback.answer()
 
